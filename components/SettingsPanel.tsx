@@ -1,253 +1,243 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { OptimizationSettings, OutputFormat } from '../types';
-import { ChevronDown, Cpu, Settings2, Target, Maximize2, HardDrive, Zap, X } from 'lucide-react';
+import React, { useEffect, useId, useState } from 'react';
+import { OptimizationSettings, OutputFormat, CompressionMode } from '../types';
+import { Info } from 'lucide-react';
 
 interface SettingsPanelProps {
   settings: OptimizationSettings;
-  theme: 'dark' | 'light';
   onChange: (settings: OptimizationSettings) => void;
-  onClose?: () => void;
   className?: string;
 }
 
-const PRESETS = [
-  { id: 'efficient', shortName: 'WEB', values: { targetSizeKB: 50, minQuality: 60, minDimension: 600 } },
-  { id: 'balanced', shortName: 'BAL', values: { targetSizeKB: 100, minQuality: 75, minDimension: 750 } },
-  { id: 'high', shortName: 'PRO', values: { targetSizeKB: 500, minQuality: 90, minDimension: 1200 } }
+// Values unchanged from the original panel (WEB / BAL / PRO).
+export const PRESETS = [
+  { id: 'efficient', shortName: 'WEB', label: 'Web', values: { targetSizeKB: 50, minQuality: 60, minDimension: 600 } },
+  { id: 'balanced', shortName: 'BAL', label: 'Balanced', values: { targetSizeKB: 100, minQuality: 75, minDimension: 750 } },
+  { id: 'high', shortName: 'PRO', label: 'High quality', values: { targetSizeKB: 500, minQuality: 90, minDimension: 1200 } }
 ];
 
-const EditableValue: React.FC<{
+export const getActivePreset = (settings: OptimizationSettings) =>
+  PRESETS.find(p => p.values.targetSizeKB === settings.targetSizeKB && p.values.minQuality === settings.minQuality && p.values.minDimension === settings.minDimension);
+
+/** Number input that commits on blur / Enter (same parsing rules as the original click-to-edit value). */
+const NumberInput: React.FC<{
   value: number;
-  unit?: string;
-  onSave: (val: number) => void;
-}> = ({ value, unit = '', onSave }) => {
-  const [isEditing, setIsEditing] = useState(false);
+  unit: string;
+  onCommit: (val: number) => void;
+  label: string;
+  id?: string;
+  className?: string;
+}> = ({ value, unit, onCommit, label, id, className = '' }) => {
   const [temp, setTemp] = useState(value.toString());
-  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => setTemp(value.toString()), [value]);
 
-  useEffect(() => {
-    if (isEditing) inputRef.current?.focus();
-  }, [isEditing]);
-
-  const handleBlur = () => {
+  const commit = () => {
     const num = parseFloat(temp);
-    if (!isNaN(num)) onSave(num);
-    setIsEditing(false);
+    if (!isNaN(num)) onCommit(num);
+    else setTemp(value.toString());
   };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleBlur();
-    if (e.key === 'Escape') {
-      setTemp(value.toString());
-      setIsEditing(false);
-    }
-  };
-
-  if (isEditing) {
-    return (
-      <input 
-        ref={inputRef}
-        type="text"
-        value={temp}
-        onChange={(e) => setTemp(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        className="w-16 bg-blue-500/10 border border-blue-500/20 text-blue-500 text-[11px] font-black text-right px-2 py-1 rounded focus:outline-none tracking-tight"
-      />
-    );
-  }
 
   return (
-    <span 
-      onClick={() => setIsEditing(true)}
-      title="Click to edit"
-      className="text-blue-500 dark:text-blue-400 cursor-pointer hover:bg-blue-500/10 px-2 py-0.5 rounded transition-colors font-black tracking-tight"
-    >
-      {value}{unit}
-    </span>
+    <div className={`relative ${className}`}>
+      <input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        aria-label={label}
+        value={temp}
+        onChange={(e) => setTemp(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') setTemp(value.toString());
+        }}
+        className="w-full h-9 rounded-lg border border-line-strong bg-white pl-2.5 pr-9 text-right text-sm font-semibold tabular-nums text-ink focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/25 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none" aria-hidden="true">{unit}</span>
+    </div>
   );
 };
 
-const CompactSlider: React.FC<{
-  label: string; value: number; min: number; max: number; step: number; unit?: string; onChange: (val: number) => void;
-}> = ({ label, value, min, max, step, unit = '', onChange }) => {
-  const percentage = ((value - min) / (max - min)) * 100;
+const SliderField: React.FC<{
+  label: string; help: string; value: number; min: number; max: number; step: number; unit: string; onChange: (val: number) => void;
+}> = ({ label, help, value, min, max, step, unit, onChange }) => {
+  const id = useId();
+  const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
   return (
-    <div className="space-y-3">
-      <div className="flex justify-between items-center text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-tight">
-        <label>{label}</label>
-        <EditableValue value={value} unit={unit} onSave={onChange} />
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={id} className="text-sm font-medium text-ink">{label}</label>
+        <NumberInput value={value} unit={unit} onCommit={onChange} label={`${label} (${unit})`} className="w-[92px]" />
       </div>
-      <div className="relative h-6 flex items-center group cursor-pointer">
-        <div className="absolute w-full h-1.5 bg-slate-200 dark:bg-white/[0.05] rounded-full overflow-hidden">
-             <div className="h-full bg-blue-500/10 w-full"></div>
-        </div>
-        <div className="absolute h-1.5 rounded-full bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.3)]" style={{ width: `${percentage}%` }}></div>
-        <input 
-          type="range" 
-          min={min} 
-          max={max} 
-          step={step} 
-          value={value} 
-          onChange={(e) => onChange(Number(e.target.value))} 
-          className="slider-input absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
-        />
-        <div 
-          className="absolute w-5 h-5 bg-white rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.2)] border-2 border-blue-500 pointer-events-none transition-transform group-hover:scale-110 active:scale-95"
-          style={{ left: `calc(${percentage}% - 10px)` }}
-        ></div>
+      <p className="text-xs text-muted mt-0.5 mb-2.5">{help}</p>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-valuetext={`${value} ${unit}`}
+        className="op-range w-full"
+        style={{ ['--pct' as any]: `${pct}%` }}
+      />
+      <div className="flex justify-between text-[11px] text-subtle mt-1 tabular-nums" aria-hidden="true">
+        <span>{min}{unit}</span><span>{max}{unit}</span>
       </div>
     </div>
   );
 };
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, theme, onChange, onClose, className = '' }) => {
-  const [isFormatMenuOpen, setIsFormatMenuOpen] = useState(false);
-  
+function Segmented<T extends string>({ label, value, options, onChange }: {
+  label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="grid gap-1 p-1 bg-canvas border border-line rounded-lg" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map(o => {
+        const selected = o.value === value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(o.value)}
+            className={`h-8 rounded-md text-[13px] font-semibold transition-colors ${selected ? 'bg-white text-brand-600 shadow-card ring-1 ring-line' : 'text-muted hover:text-ink'}`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const Section: React.FC<{ title: string; description?: string; action?: React.ReactNode; children: React.ReactNode }> = ({ title, description, action, children }) => (
+  <section className="py-5 first:pt-0 border-b border-line last:border-b-0">
+    <div className="flex items-start justify-between gap-3 mb-3">
+      <div>
+        <h3 className="text-[13px] font-semibold text-ink font-sans">{title}</h3>
+        {description && <p className="text-xs text-muted mt-0.5">{description}</p>}
+      </div>
+      {action}
+    </div>
+    {children}
+  </section>
+);
+
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onChange, className = '' }) => {
   const handleChange = (key: keyof OptimizationSettings, value: any) => onChange({ ...settings, [key]: value });
-  const activePreset = PRESETS.find(p => p.values.targetSizeKB === settings.targetSizeKB && p.values.minQuality === settings.minQuality && p.values.minDimension === settings.minDimension)?.id;
+  const activePreset = getActivePreset(settings)?.id;
+  const minWidthId = useId();
+  const minHeightId = useId();
 
   return (
-    <div className={`flex flex-col h-full bg-[#fbfbfb] dark:bg-[#09090b] ${className} border-l dark:border-white/10 border-slate-200`}>
-      
-      {/* Header */}
-      <div className="px-6 md:px-8 py-6 md:py-10 border-b dark:border-white/10 border-slate-200/50 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-[14px] bg-blue-500/10 flex items-center justify-center text-blue-500 border border-blue-500/10">
-                  <Settings2 size={18} />
-              </div>
-              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-tight">Control Center</h3>
-          </div>
-          {/* Mobile Close Button */}
-          <button 
-            onClick={onClose}
-            className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500"
-          >
-            <X size={20} />
-          </button>
-      </div>
+    <div className={className}>
+      <Section title="Compression mode" description={settings.mode === 'smart' ? 'Iteratively adjusts quality and size to reach your target.' : 'Encodes once at 90% quality, keeping original dimensions.'}>
+        <Segmented<CompressionMode>
+          label="Compression mode"
+          value={settings.mode}
+          onChange={(v) => handleChange('mode', v)}
+          options={[{ value: 'smart', label: 'Smart' }, { value: 'basic', label: 'Basic' }]}
+        />
+      </Section>
 
-      <div className="flex-1 flex flex-col p-6 md:p-8 gap-6 md:gap-8 overflow-y-auto custom-scrollbar">
-        
-        {/* Engine Module */}
-        <div className="space-y-4">
-            <span className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest flex items-center gap-3">
-                <Cpu size={14} /> Distillation Engine
-            </span>
-            <div className="grid grid-cols-2 gap-3">
-                <button 
-                  onClick={() => handleChange('mode', settings.mode === 'smart' ? 'basic' : 'smart')} 
-                  className={`flex flex-col p-4 md:p-5 rounded-[20px] md:rounded-[24px] border transition-all text-left relative overflow-hidden group ${settings.mode === 'smart' ? 'bg-blue-600 text-white border-blue-500 shadow-xl' : 'bg-white dark:bg-[#18181b] border-slate-200 dark:border-white/10 text-slate-400'}`}
-                >
-                    <span className="text-[8px] md:text-[9px] font-black uppercase tracking-tight opacity-60">Logic</span>
-                    <span className={`text-xs font-black uppercase mt-1 md:mt-2 tracking-tight ${settings.mode === 'smart' ? 'text-white' : 'dark:text-white text-slate-900'}`}>{settings.mode}</span>
-                    {settings.mode === 'smart' && <Zap size={32} className="absolute -bottom-1 -right-1 opacity-10 rotate-12" />}
-                </button>
-                
-                <div className="relative">
-                  <button 
-                    onClick={() => setIsFormatMenuOpen(!isFormatMenuOpen)}
-                    className="flex flex-col w-full p-4 md:p-5 rounded-[20px] md:rounded-[24px] bg-white dark:bg-[#18181b] border border-slate-200 dark:border-white/10 transition-all text-left group hover:border-blue-500/20"
-                  >
-                      <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-tight opacity-60">Format</span>
-                      <div className="flex items-center justify-between w-full mt-1 md:mt-2">
-                        <span className="text-xs font-black uppercase tracking-tight dark:text-white text-slate-900">{settings.outputFormat}</span>
-                        <ChevronDown size={14} className={`text-slate-400 transition-transform ${isFormatMenuOpen ? 'rotate-180' : ''}`} />
-                      </div>
-                  </button>
+      <Section title="Output format">
+        <Segmented<OutputFormat>
+          label="Output format"
+          value={settings.outputFormat}
+          onChange={(v) => handleChange('outputFormat', v)}
+          options={[{ value: 'webp', label: 'WebP' }, { value: 'jpeg', label: 'JPEG' }, { value: 'png', label: 'PNG' }]}
+        />
+        {settings.outputFormat === 'png' && (
+          <p className="text-xs text-muted mt-2 flex gap-1.5"><Info size={13} className="mt-0.5 shrink-0" aria-hidden="true" />PNG is lossless, so only dimensions are reduced to approach the target size.</p>
+        )}
+      </Section>
 
-                  {isFormatMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-[100]" onClick={() => setIsFormatMenuOpen(false)} />
-                      <div className="absolute top-full left-0 right-0 mt-2 p-1.5 dark:bg-[#1a1a1a] bg-white border dark:border-white/10 border-slate-200 rounded-[20px] shadow-2xl z-[110] animate-in slide-in-from-top-2 duration-200 backdrop-blur-3xl">
-                        {['webp', 'jpeg', 'png'].map((fmt) => (
-                          <button 
-                            key={fmt}
-                            onClick={() => { handleChange('outputFormat', fmt); setIsFormatMenuOpen(false); }}
-                            className={`w-full text-left px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${settings.outputFormat === fmt ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5'}`}
-                          >
-                            {fmt}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
+      {settings.mode === 'basic' && (
+        <div className="mt-5 rounded-lg bg-brand-50 border border-brand-100 px-3 py-2.5 text-xs text-brand-800 flex gap-2">
+          <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>The settings below apply to Smart mode. They are kept for when you switch back.</span>
+        </div>
+      )}
+
+      <Section title="Optimization profile" description="Presets set target size, quality floor and minimum edge.">
+        <div role="radiogroup" aria-label="Optimization profile" className="grid grid-cols-3 gap-2">
+          {PRESETS.map((p) => {
+            const selected = activePreset === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onChange({ ...settings, ...p.values })}
+                className={`rounded-lg border px-2 py-2.5 text-left transition-colors ${selected ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-line-strong bg-white hover:border-subtle'}`}
+              >
+                <span className={`block text-[13px] font-semibold ${selected ? 'text-brand-700' : 'text-ink'}`}>{p.label}</span>
+                <span className="block text-[11px] text-muted mt-0.5 tabular-nums">{p.values.targetSizeKB} KB · {p.values.minQuality}%</span>
+              </button>
+            );
+          })}
+        </div>
+        {!activePreset && <p className="text-xs text-muted mt-2">Custom values</p>}
+
+        <div className="space-y-5 mt-5">
+          <SliderField label="Target size" help="Aim for files at or below this size." value={settings.targetSizeKB} min={10} max={1000} step={10} unit="KB" onChange={(v) => handleChange('targetSizeKB', v)} />
+          <SliderField label="Quality floor" help="Quality is never reduced below this level." value={settings.minQuality} min={10} max={100} step={5} unit="%" onChange={(v) => handleChange('minQuality', v)} />
+        </div>
+      </Section>
+
+      <Section
+        title="Dimensions"
+        description={settings.useSmartDimension ? 'The shorter side is never reduced below the minimum edge.' : 'Set a minimum width and height in pixels.'}
+      >
+        <Segmented<'smart' | 'manual'>
+          label="Dimension bounds"
+          value={settings.useSmartDimension ? 'smart' : 'manual'}
+          onChange={(v) => handleChange('useSmartDimension', v === 'smart')}
+          options={[{ value: 'smart', label: 'Min edge' }, { value: 'manual', label: 'Width × height' }]}
+        />
+        <div className="mt-4">
+          {settings.useSmartDimension ? (
+            <SliderField label="Minimum edge" help="Smallest allowed length of the shorter side." value={settings.minDimension} min={100} max={3000} step={50} unit="px" onChange={(v) => handleChange('minDimension', v)} />
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor={minWidthId} className="block text-sm font-medium text-ink mb-1.5">Min width</label>
+                  <NumberInput id={minWidthId} value={settings.minWidth || 0} unit="px" onCommit={(v) => handleChange('minWidth', v)} label="Minimum width (px)" />
                 </div>
-            </div>
+                <div>
+                  <label htmlFor={minHeightId} className="block text-sm font-medium text-ink mb-1.5">Min height</label>
+                  <NumberInput id={minHeightId} value={settings.minHeight || 0} unit="px" onCommit={(v) => handleChange('minHeight', v)} label="Minimum height (px)" />
+                </div>
+              </div>
+              <p className="text-xs text-muted mt-2">With both at 0, images may be reduced to 50 px wide.</p>
+            </>
+          )}
         </div>
+      </Section>
 
-        {/* Target Module */}
-        <div className="space-y-4">
-            <span className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest flex items-center gap-3">
-                <Target size={14} /> Optimization Profile
-            </span>
-            <div className="grid grid-cols-3 gap-2 md:gap-3">
-                {PRESETS.map((p) => (
-                    <button key={p.id} onClick={() => onChange({ ...settings, ...p.values })} className={`py-2 md:py-3 rounded-xl md:rounded-2xl border text-[9px] md:text-[10px] font-black uppercase transition-all tracking-tight ${activePreset === p.id ? 'bg-blue-600 text-white border-blue-500 shadow-lg scale-105' : 'bg-white dark:bg-[#18181b] border-slate-200 dark:border-white/10 text-slate-500 dark:text-zinc-500 hover:border-blue-500/30'}`}>
-                        {p.shortName}
-                    </button>
-                ))}
-            </div>
-            <div className="dark:bg-[#18181b] bg-white border dark:border-white/10 border-slate-200/60 p-5 md:p-6 rounded-[28px] md:rounded-[32px] space-y-5 md:space-y-6 shadow-sm">
-                <CompactSlider label="Target Size" value={settings.targetSizeKB} min={10} max={1000} step={10} unit="KB" onChange={(v) => handleChange('targetSizeKB', v)} />
-                <CompactSlider label="Quality Floor" value={settings.minQuality} min={10} max={100} step={5} unit="%" onChange={(v) => handleChange('minQuality', v)} />
-            </div>
-        </div>
-
-        {/* Geometry Module */}
-        <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-                <span className="text-[10px] font-black text-slate-400 dark:text-zinc-600 uppercase tracking-widest flex items-center gap-3">
-                    <Maximize2 size={14} /> Bounds
-                </span>
-                <button 
-                  onClick={() => handleChange('useSmartDimension', !settings.useSmartDimension)} 
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-tight transition-all ${settings.useSmartDimension ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-100 dark:bg-white/5 text-slate-400 border-slate-200 dark:border-white/10'}`}
-                >
-                    {settings.useSmartDimension ? 'Smart' : 'Manual'}
-                </button>
-            </div>
-            
-            <div className="dark:bg-[#18181b] bg-white border dark:border-white/10 border-slate-200/60 p-5 md:p-6 rounded-[28px] md:rounded-[32px] shadow-sm">
-                {settings.useSmartDimension ? (
-                    <CompactSlider label="Min Edge" value={settings.minDimension} min={100} max={3000} step={50} unit="px" onChange={(v) => handleChange('minDimension', v)} />
-                ) : (
-                    <div className="grid grid-cols-2 gap-3 md:gap-4">
-                        <div className="space-y-1.5 md:space-y-2">
-                            <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-tight pl-1 opacity-60">Width</span>
-                            <div className="bg-slate-50 dark:bg-white/[0.03] border dark:border-white/10 border-slate-200 rounded-lg md:rounded-xl px-3 md:px-5 py-2 md:py-3 flex items-center justify-end">
-                                <EditableValue value={settings.minWidth || 0} unit="px" onSave={(v) => handleChange('minWidth', v)} />
-                            </div>
-                        </div>
-                        <div className="space-y-1.5 md:space-y-2">
-                            <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-tight pl-1 opacity-60">Height</span>
-                            <div className="bg-slate-50 dark:bg-white/[0.03] border dark:border-white/10 border-slate-200 rounded-lg md:rounded-xl px-3 md:px-5 py-2 md:py-3 flex items-center justify-end">
-                                <EditableValue value={settings.minHeight || 0} unit="px" onSave={(v) => handleChange('minHeight', v)} />
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-
-        {/* Hardware Footer */}
-        <div className="mt-auto pt-6 md:pt-8 border-t dark:border-white/10 border-slate-200/60 flex items-center justify-between opacity-50">
-            <div className="flex items-center gap-2 md:gap-3">
-                <HardDrive size={12} className="text-blue-500 md:w-3.5 md:h-3.5" />
-                <span className="text-[8px] md:text-[9px] font-black uppercase dark:text-white text-slate-900 tracking-tight">HW Accelerated</span>
-            </div>
-            <span className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-tight">v3.2.0 Stable</span>
-        </div>
-      </div>
       <style>{`
-        .slider-input::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 28px;
-            height: 28px;
-            cursor: pointer;
-        }
+        .op-range { -webkit-appearance: none; appearance: none; height: 20px; background: transparent; cursor: pointer; }
+        .op-range:focus { outline: none; }
+        .op-range::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, #2965F1 var(--pct), #E3E8F2 var(--pct)); }
+        .op-range::-moz-range-track { height: 6px; border-radius: 999px; background: #E3E8F2; }
+        .op-range::-moz-range-progress { height: 6px; border-radius: 999px; background: #2965F1; }
+        .op-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 999px; background: #fff; border: 2px solid #2965F1; box-shadow: 0 1px 3px rgba(17,24,39,.2); }
+        .op-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: #fff; border: 2px solid #2965F1; box-shadow: 0 1px 3px rgba(17,24,39,.2); }
+        .op-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(41,101,241,.3); }
+        .op-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(41,101,241,.3); }
       `}</style>
     </div>
   );
+};
+
+/** One-line summary of the current settings, used by the collapsed mobile panel. */
+export const summarizeSettings = (s: OptimizationSettings) => {
+  const fmt = s.outputFormat.toUpperCase();
+  if (s.mode === 'basic') return `Basic · ${fmt}`;
+  const bounds = s.useSmartDimension ? `${s.minDimension}px edge` : `${s.minWidth || 0}×${s.minHeight || 0}px`;
+  return `Smart · ${fmt} · ${s.targetSizeKB} KB · ${s.minQuality}% · ${bounds}`;
 };

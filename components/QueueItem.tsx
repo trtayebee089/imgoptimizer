@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { QueueItem as QueueItemType } from '../types';
-import { X, ArrowRight, RefreshCw, Maximize2, Copy, Zap, ChevronDown, ChevronUp, History, AlertTriangle, Play, Download, Bot } from 'lucide-react';
+import { X, ArrowRight, RefreshCw, Copy, ChevronDown, AlertTriangle, Download, Loader2, CheckCircle2, Clock, Columns2, Pencil } from 'lucide-react';
 
 interface QueueItemProps {
   item: QueueItemType;
@@ -14,9 +14,10 @@ interface QueueItemProps {
   onRename: (id: string, newName: string) => void;
 }
 
+const iconBtn = 'w-9 h-9 inline-flex items-center justify-center shrink-0 rounded-lg text-muted border border-transparent hover:border-line hover:bg-canvas hover:text-ink transition-colors';
+
 export const QueueItem: React.FC<QueueItemProps> = ({ item, onRemove, onRedo, onConfirm, onSkip, onCompare, onToast, onRename }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [justFinished, setJustFinished] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(item.name);
 
@@ -25,14 +26,6 @@ export const QueueItem: React.FC<QueueItemProps> = ({ item, onRemove, onRedo, on
   const isError = item.status === 'error';
   const needsConfirmation = item.status === 'needs_confirmation';
 
-  useEffect(() => {
-    if (isDone) {
-      setJustFinished(true);
-      const timer = setTimeout(() => setJustFinished(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isDone]);
-  
   useEffect(() => {
       setTempName(item.name);
   }, [item.name]);
@@ -46,8 +39,8 @@ export const QueueItem: React.FC<QueueItemProps> = ({ item, onRemove, onRedo, on
       setIsEditingName(false);
   };
 
-  const savedPercent = isDone && item.result && item.result.originalSize > 0 
-    ? Math.round(((item.result.originalSize - item.result.compressedSize) / item.result.originalSize) * 100) 
+  const savedPercent = isDone && item.result && item.result.originalSize > 0
+    ? Math.round(((item.result.originalSize - item.result.compressedSize) / item.result.originalSize) * 100)
     : 0;
 
   const formatSize = (bytes: number) => {
@@ -71,166 +64,196 @@ export const QueueItem: React.FC<QueueItemProps> = ({ item, onRemove, onRedo, on
   };
 
   const steps = item.result?.steps || [];
+  const r = item.result;
+  const inputExt = (item.file.name.split('.').pop() || '').toUpperCase();
+  const downloadName = tempName.replace(/\.[^/.]+$/, "") + "." + (r?.extension || '');
+
+  const status = isDone
+    ? { label: r?.strategyLabel === 'Skipped' ? 'Original kept' : 'Optimized', cls: 'bg-success-50 text-success-700', Icon: CheckCircle2 }
+    : isProcessing ? { label: 'Optimizing', cls: 'bg-brand-50 text-brand-700', Icon: Loader2 }
+    : isError ? { label: 'Failed', cls: 'bg-danger-50 text-danger-700', Icon: AlertTriangle }
+    : needsConfirmation ? { label: 'Needs review', cls: 'bg-warning-50 text-warning-700', Icon: AlertTriangle }
+    : { label: 'Queued', cls: 'bg-canvas text-muted', Icon: Clock };
 
   return (
-    <div className={`
-      group relative dark:bg-[#18181b] bg-white backdrop-blur-3xl border rounded-[24px] md:rounded-[40px] p-3 md:p-5 flex flex-col gap-2 md:gap-4 transition-all duration-700 animate-in fade-in slide-in-from-bottom-4 shadow-sm hover:shadow-2xl md:hover:-translate-y-1
-      ${needsConfirmation ? 'border-yellow-500/30 bg-yellow-500/[0.01]' : ''}
-      ${justFinished ? 'border-green-500/30 shadow-[0_24px_64px_rgba(34,197,94,0.1)]' : 'dark:border-white/10 border-slate-200/80 hover:border-blue-500/20'}
-    `}>
-      
-      {/* Interaction Ambience */}
-      {isProcessing && <div className="absolute inset-0 bg-blue-500/[0.02] animate-pulse rounded-[24px] md:rounded-[40px] pointer-events-none"></div>}
+    <li className={`bg-white border rounded-xl shadow-card transition-colors ${needsConfirmation ? 'border-warning-500/40' : isError ? 'border-danger-500/40' : 'border-line'}`}>
+      <div className="flex gap-3 sm:gap-4 p-3 sm:p-4">
 
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 md:gap-6 relative z-10">
-          
-          {/* Thumbnail Module */}
-          <div className="flex items-center gap-4 w-full sm:w-auto">
-            <div 
-              className={`relative w-16 h-16 md:w-24 md:h-24 shrink-0 rounded-[18px] md:rounded-[28px] overflow-hidden dark:bg-black/40 bg-slate-50 border dark:border-white/10 border-slate-200 transition-all duration-700 ${isDone ? 'cursor-pointer sm:group-hover:scale-105 sm:group-hover:rotate-2' : ''}`}
-              onClick={() => isDone && onCompare()}
-            >
-              <img 
-                src={isDone && item.result ? item.result.compressedUrl : item.previewUrl} 
-                alt={item.file.name}
-                className={`w-full h-full object-cover transition-all duration-1000 ${isProcessing ? 'scale-125 blur-[6px] opacity-30' : 'scale-100'}`}
-              />
-              
-              {isProcessing && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-8 h-8 md:w-12 md:h-12 border-[4px] md:border-[6px] border-blue-500/10 border-t-blue-600 rounded-full animate-spin"></div>
-                </div>
-              )}
+          {/* Thumbnail */}
+          <button
+            type="button"
+            disabled={!isDone}
+            onClick={() => isDone && onCompare()}
+            aria-label={isDone ? `Compare original and optimized ${item.name}` : undefined}
+            tabIndex={isDone ? 0 : -1}
+            className="relative w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-lg overflow-hidden bg-canvas border border-line enabled:hover:ring-2 enabled:hover:ring-brand-500/40 disabled:cursor-default"
+          >
+            <img
+              src={isDone && r ? r.compressedUrl : item.previewUrl}
+              alt=""
+              className={`w-full h-full object-cover ${isProcessing ? 'opacity-40' : ''}`}
+            />
+            {isProcessing && (
+              <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+                <Loader2 size={22} className="animate-spin text-brand-500" />
+              </span>
+            )}
+          </button>
 
-              {isDone && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 sm:group-hover:opacity-100 transition-all duration-500">
-                  <Maximize2 size={20} className="text-white md:w-7 md:h-7 scale-75 sm:group-hover:scale-100 transition-all duration-500" />
-                </div>
-              )}
-            </div>
-
-            {/* Actions for Mobile (Visible by default on tiny screens) */}
-            <div className="flex sm:hidden items-center gap-2 ml-auto">
-              <button onClick={() => onRemove(item.id)} className="w-8 h-8 flex items-center justify-center text-slate-400 dark:bg-white/5 bg-slate-100 rounded-lg border dark:border-white/10 border-slate-200/50"><X size={16} /></button>
-            </div>
-          </div>
-
-          {/* Info Module */}
-          <div className="flex-grow min-w-0 w-full sm:w-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-2 md:mb-3">
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
                 {isEditingName ? (
-                     <input 
-                        type="text" value={tempName}
-                        onChange={(e) => setTempName(e.target.value)}
-                        onBlur={handleNameSave}
-                        onKeyDown={(e) => e.key === 'Enter' ? handleNameSave() : e.key === 'Escape' ? (setTempName(item.name), setIsEditingName(false)) : null}
-                        autoFocus
-                        className="text-sm md:text-base font-black dark:text-white text-slate-900 bg-transparent border-b-2 border-blue-500 focus:outline-none w-full max-w-full sm:max-w-[400px] p-0 rounded-none tracking-tight"
-                     />
+                  <input
+                    type="text" value={tempName}
+                    aria-label="File name"
+                    onChange={(e) => setTempName(e.target.value)}
+                    onBlur={handleNameSave}
+                    onKeyDown={(e) => e.key === 'Enter' ? handleNameSave() : e.key === 'Escape' ? (setTempName(item.name), setIsEditingName(false)) : null}
+                    autoFocus
+                    className="w-full text-sm font-semibold text-ink border-b-2 border-brand-500 bg-transparent focus:outline-none py-0.5"
+                  />
                 ) : (
-                    <h4 
-                        className="text-sm md:text-base font-display font-black dark:text-white/90 text-slate-900 truncate max-w-full sm:max-w-[400px] cursor-text hover:text-blue-600 dark:hover:text-blue-400 transition-all tracking-tight leading-none" 
-                        onClick={(e) => { e.stopPropagation(); setIsEditingName(true); }}
-                    >
-                        {item.name}
-                    </h4>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setIsEditingName(true); }}
+                    title="Rename"
+                    className="group/name max-w-full inline-flex items-center gap-1.5 text-left text-sm font-semibold text-ink hover:text-brand-600 rounded"
+                  >
+                    <span className="truncate">{item.name}</span>
+                    <Pencil size={12} className="shrink-0 text-subtle opacity-0 group-hover/name:opacity-100 group-focus-visible/name:opacity-100" aria-hidden="true" />
+                    <span className="sr-only">(rename)</span>
+                  </button>
                 )}
-
-                <div className="flex items-center gap-2">
-                    {item.result?.aiUsed && (
-                        <span className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-lg bg-indigo-500/10 text-indigo-500 text-[8px] md:text-[9px] font-black uppercase tracking-tight border border-indigo-500/10 shadow-sm"><Bot size={8} className="inline mr-1" /> Vision</span>
-                    )}
-                    {item.result?.strategyLabel && (
-                        <span className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-lg bg-blue-500/10 text-blue-600 text-[8px] md:text-[9px] font-black uppercase tracking-tight border border-blue-500/10 shadow-sm">{item.result.strategyLabel}</span>
-                    )}
+                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${status.cls}`}>
+                    <status.Icon size={12} className={isProcessing ? 'animate-spin' : ''} aria-hidden="true" />{status.label}
+                  </span>
+                  {r?.strategyLabel && r.strategyLabel !== 'Skipped' && (
+                    <span className="px-2 py-0.5 rounded-md bg-canvas border border-line text-xs text-muted">{r.strategyLabel}</span>
+                  )}
                 </div>
-            </div>
-            
-            <div className="flex items-center gap-3 md:gap-6 text-[10px] md:text-[11px] font-bold">
-                {isDone && item.result ? (
-                  <div className="flex flex-wrap items-center gap-2 md:gap-6 animate-in fade-in slide-in-from-left-2 duration-700">
-                      <div className="flex items-center gap-2 px-2 py-1 md:px-3 md:py-1.5 dark:bg-black/20 bg-slate-100 rounded-lg md:rounded-xl text-slate-500 dark:text-zinc-500 border dark:border-white/5 border-slate-200/50">
-                         <span className="uppercase text-[8px] md:text-[10px] opacity-60 font-black tracking-tight">{item.file.name.split('.').pop()}</span>
-                         <ArrowRight size={10} className="opacity-30 md:w-3 md:h-3" />
-                         <span className="uppercase text-[8px] md:text-[10px] text-blue-500 font-black tracking-tight">{item.result.extension}</span>
-                      </div>
+              </div>
 
-                      <div className="flex items-center gap-2 md:gap-4">
-                        <span className="line-through opacity-30 text-slate-500 font-black text-[9px] md:text-[11px]">{formatSize(item.result.originalSize)}</span>
-                        <span className="dark:text-white text-slate-900 font-black tracking-tight text-xs md:text-sm">{formatSize(item.result.compressedSize)}</span>
-                        {savedPercent > 0 && (
-                          <span className="text-green-500 bg-green-500/10 px-2 py-0.5 md:px-3 md:py-1 rounded-lg md:rounded-xl text-[8px] md:text-[10px] font-black tracking-tight border border-green-500/10">-{savedPercent}%</span>
-                        )}
-                      </div>
-                  </div>
-                ) : needsConfirmation ? (
-                    <div className="flex items-center gap-2 text-yellow-500 animate-pulse text-[9px] md:text-[10px]">
-                        <AlertTriangle size={14} /> <span className="uppercase tracking-widest font-black">Ignored: Asset is {formatSize(item.file.size)}</span>
-                    </div>
-                ) : isProcessing ? (
-                   <div className="flex flex-col gap-2 w-full max-w-[200px] md:max-w-sm">
-                       <span className="text-blue-500 uppercase tracking-widest text-[8px] md:text-[9px] font-black animate-pulse">Distilling...</span>
-                       <div className="w-full h-1 md:h-2 bg-blue-500/10 rounded-full overflow-hidden relative">
-                           <div className="h-full bg-blue-600 w-full animate-[liquid_3s_infinite] rounded-full shadow-[0_0_15px_rgba(37,99,235,0.4)]"></div>
-                       </div>
-                   </div>
-                ) : (
-                  <div className="flex items-center gap-2 md:gap-4 text-slate-400 dark:text-zinc-500 font-black uppercase tracking-widest text-[8px] md:text-[9px]">
-                    <span className="bg-slate-100 dark:bg-white/5 px-2 py-0.5 md:px-3 md:py-1 rounded-lg">{formatSize(item.file.size)}</span>
-                    <span className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-slate-300 dark:bg-zinc-700"></span>
-                    <span>Queued</span>
-                  </div>
-                )}
+              {/* Remove is always reachable */}
+              <button type="button" onClick={() => onRemove(item.id)} className={iconBtn + ' -mr-1 -mt-1 hover:text-danger-600'} title="Remove" aria-label={`Remove ${item.name}`}>
+                <X size={17} />
+              </button>
             </div>
-          </div>
 
-          {/* Actions Module */}
-          <div className="flex items-center gap-2 md:gap-3 pr-0 md:pr-2 w-full sm:w-auto mt-2 sm:mt-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-500 sm:translate-x-4 sm:group-hover:translate-x-0 overflow-x-auto no-scrollbar">
-            {needsConfirmation && (
-                <div className="flex items-center gap-2 mr-2">
-                    <button onClick={() => onSkip?.(item.id)} className="px-3 md:px-5 py-2 md:py-3 text-[9px] md:text-[10px] font-black text-slate-400 hover:text-slate-900 dark:hover:text-white uppercase tracking-tight transition-all">Skip</button>
-                    <button onClick={() => onConfirm?.(item.id)} className="flex items-center gap-2 bg-blue-600 text-white px-4 md:px-6 py-2 md:py-3 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-tight transition-all shadow-xl whitespace-nowrap"><Play size={10} fill="currentColor" /> Distill</button>
+            {/* Metrics / state */}
+            <div className="mt-2.5 text-[13px]">
+              {isDone && r ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                  <span className="inline-flex items-center gap-1.5 text-muted">
+                    <span className="font-medium">{inputExt}</span>
+                    <ArrowRight size={12} aria-hidden="true" /><span className="sr-only">to</span>
+                    <span className="font-semibold text-brand-600">{r.extension.toUpperCase()}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 tabular-nums">
+                    <span className="text-muted line-through decoration-subtle">{formatSize(r.originalSize)}</span>
+                    <ArrowRight size={12} className="text-subtle" aria-hidden="true" /><span className="sr-only">to</span>
+                    <span className="font-semibold text-ink">{formatSize(r.compressedSize)}</span>
+                  </span>
+                  {savedPercent > 0 ? (
+                    <span className="px-1.5 py-0.5 rounded-md bg-success-50 text-success-700 text-xs font-semibold tabular-nums">−{savedPercent}%</span>
+                  ) : savedPercent < 0 ? (
+                    <span className="px-1.5 py-0.5 rounded-md bg-warning-50 text-warning-700 text-xs font-semibold tabular-nums">+{Math.abs(savedPercent)}% larger</span>
+                  ) : null}
+                  <span className="text-muted tabular-nums hidden sm:inline">
+                    {r.originalWidth}×{r.originalHeight}
+                    {(r.width !== r.originalWidth || r.height !== r.originalHeight) && <> → {r.width}×{r.height}</>} px
+                  </span>
                 </div>
-            )}
-            {isDone && item.result && (
-              <>
-                <button onClick={handleCopy} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center shrink-0 text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 dark:bg-black/20 bg-slate-100 rounded-xl md:rounded-2xl transition-all border dark:border-white/10 border-slate-200/50" title="Copy"><Copy size={16} className="md:w-5 md:h-5" /></button>
-                <a href={item.result.compressedUrl} download={tempName.replace(/\.[^/.]+$/, "") + "." + item.result.extension} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center shrink-0 text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 dark:bg-black/20 bg-slate-100 rounded-xl md:rounded-2xl transition-all border dark:border-white/10 border-slate-200/50" title="Download"><Download size={16} className="md:w-5 md:h-5" /></a>
-              </>
-            )}
+              ) : needsConfirmation ? (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                  <p className="text-warning-700">Already within the target size ({formatSize(item.file.size)}). Optimize anyway?</p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button type="button" onClick={() => onSkip?.(item.id)} className="h-8 px-3 rounded-lg border border-line-strong bg-white text-[13px] font-semibold text-ink hover:bg-canvas">Skip</button>
+                    <button type="button" onClick={() => onConfirm?.(item.id)} className="h-8 px-3 rounded-lg bg-brand-500 text-white text-[13px] font-semibold hover:bg-brand-600">Optimize</button>
+                  </div>
+                </div>
+              ) : isProcessing ? (
+                <div className="max-w-xs">
+                  <div className="h-1.5 rounded-full bg-brand-100 overflow-hidden" role="progressbar" aria-label={`Optimizing ${item.name}`}>
+                    <div className="h-full w-1/3 bg-brand-500 rounded-full animate-[op-indeterminate_1.4s_ease-in-out_infinite]" />
+                  </div>
+                </div>
+              ) : isError ? (
+                <p className="text-danger-700">This image could not be processed. Try again, or check that the file is a valid image.</p>
+              ) : (
+                <p className="text-muted tabular-nums">{formatSize(item.file.size)} · Waiting in queue</p>
+              )}
+            </div>
+
+            {/* Actions */}
             {(isDone || isError) && (
-                <button onClick={() => onRedo(item.id)} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center shrink-0 text-slate-400 hover:text-blue-500 dark:bg-black/20 bg-slate-100 rounded-xl md:rounded-2xl transition-all border dark:border-white/10 border-slate-200/50" title="Reset"><RefreshCw size={16} className="md:w-5 md:h-5" /></button>
+              <div className="flex flex-wrap items-center gap-1 mt-3 -ml-2">
+                {isDone && r && (
+                  <>
+                    <a href={r.compressedUrl} download={downloadName} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg text-[13px] font-semibold text-brand-600 hover:bg-brand-50" title="Download">
+                      <Download size={15} aria-hidden="true" /> Download
+                    </a>
+                    <button type="button" onClick={onCompare} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg text-[13px] font-medium text-muted hover:text-ink hover:bg-canvas">
+                      <Columns2 size={15} aria-hidden="true" /> Compare
+                    </button>
+                    <button type="button" onClick={handleCopy} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg text-[13px] font-medium text-muted hover:text-ink hover:bg-canvas">
+                      <Copy size={15} aria-hidden="true" /> Copy
+                    </button>
+                  </>
+                )}
+                <button type="button" onClick={() => onRedo(item.id)} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-lg text-[13px] font-medium text-muted hover:text-ink hover:bg-canvas" title="Process again with current settings">
+                  <RefreshCw size={15} aria-hidden="true" /> {isError ? 'Retry' : 'Reprocess'}
+                </button>
+                {isDone && steps.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsExpanded(v => !v)}
+                    aria-expanded={isExpanded}
+                    className="h-8 px-3 ml-auto inline-flex items-center gap-1.5 rounded-lg text-[13px] font-medium text-muted hover:text-ink hover:bg-canvas"
+                  >
+                    {steps.length} {steps.length === 1 ? 'step' : 'steps'}
+                    <ChevronDown size={15} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             )}
-            <button onClick={() => onRemove(item.id)} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center shrink-0 text-slate-400 hover:text-red-500 dark:bg-black/20 bg-slate-100 rounded-xl md:rounded-2xl transition-all border dark:border-white/10 border-slate-200/50" title="Remove"><X size={18} className="md:w-5.5 md:h-5.5" /></button>
           </div>
       </div>
 
-      {isDone && item.result && steps.length > 0 && (
-          <div className="pt-2 md:pt-4 border-t dark:border-white/10 border-slate-100 sm:ml-24 md:ml-32 mr-2 md:mr-6 animate-in slide-in-from-top-4 duration-700">
-               {!isExpanded ? (
-                 <button onClick={() => setIsExpanded(true)} className="flex items-center gap-2 md:gap-4 text-[8px] md:text-[10px] font-black text-slate-400 hover:text-blue-500 dark:hover:text-white uppercase tracking-widest transition-all">
-                    <History size={12} className="opacity-40 md:w-[14px] md:h-[14px]" /> Trace ({steps.length}) <ChevronDown size={12} className="opacity-40 md:w-[14px] md:h-[14px]" />
-                 </button>
-               ) : (
-                  <div className="space-y-2 md:space-y-3 pb-2 md:pb-4">
-                      <div className="flex items-center justify-between mb-2 md:mb-4">
-                         <span className="text-[8px] md:text-[10px] font-black text-slate-500 dark:text-zinc-600 uppercase tracking-widest">Trace</span>
-                         <button onClick={() => setIsExpanded(false)} className="text-[8px] md:text-[10px] font-black text-slate-400 hover:text-blue-500 transition-all uppercase tracking-tight flex items-center gap-1 md:gap-2"><ChevronUp size={12} /> Close</button>
-                      </div>
-                      <div className="max-h-48 overflow-y-auto space-y-2 no-scrollbar">
-                        {steps.map((step, idx) => (
-                            <div key={idx} className={`flex items-center gap-3 md:gap-6 text-[9px] md:text-[11px] font-bold p-3 md:p-4 rounded-xl md:rounded-[22px] transition-all ${idx === steps.length - 1 ? 'bg-blue-600/5 text-blue-600 border border-blue-500/20' : 'dark:bg-black/40 bg-slate-50 text-slate-500 border dark:border-white/5 border-slate-100'}`}>
-                                <span className="w-4 md:w-8 opacity-30 font-black tracking-widest">#{idx + 1}</span>
-                                <div className="flex-1 truncate uppercase tracking-tight text-[8px] md:text-[9px] font-black">{step.label}</div>
-                                <div className="hidden sm:flex items-center gap-1 md:gap-2 min-w-[80px] md:min-w-[120px] font-black text-[9px] md:text-[10px]">{step.width}×{step.height}</div>
-                                <div className="ml-auto font-black text-[10px] md:text-xs tracking-tight">{formatSize(step.size)}</div>
-                            </div>
-                        ))}
-                      </div>
-                  </div>
-               )}
+      {isDone && r && steps.length > 0 && isExpanded && (
+        <div className="border-t border-line px-3 sm:px-4 py-3">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs tabular-nums">
+              <caption className="sr-only">Optimization steps for {item.name}</caption>
+              <thead>
+                <tr className="text-left text-muted">
+                  <th scope="col" className="font-medium py-1.5 pr-3 w-8">#</th>
+                  <th scope="col" className="font-medium py-1.5 pr-3">Step</th>
+                  <th scope="col" className="font-medium py-1.5 pr-3">Dimensions</th>
+                  <th scope="col" className="font-medium py-1.5 pr-3">Quality</th>
+                  <th scope="col" className="font-medium py-1.5 text-right">Size</th>
+                </tr>
+              </thead>
+              <tbody>
+                {steps.map((step, idx) => {
+                  const last = idx === steps.length - 1;
+                  return (
+                    <tr key={idx} className={`border-t border-line ${last ? 'text-brand-700 font-semibold' : 'text-ink'}`}>
+                      <td className="py-1.5 pr-3 text-muted">{idx + 1}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{step.label}</td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{step.width}×{step.height}</td>
+                      <td className="py-1.5 pr-3">{Math.round(step.quality * 100)}%</td>
+                      <td className="py-1.5 text-right whitespace-nowrap">{formatSize(step.size)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
+        </div>
       )}
-    </div>
+    </li>
   );
 };

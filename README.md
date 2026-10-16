@@ -1,20 +1,34 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Optimizer.pro
 
-# Run and deploy your AI Studio app
+Free image optimizer that runs in the browser: WebP/JPEG/PNG output, target file size, quality floor, minimum dimensions, batch processing. Images are processed client-side with the Canvas API and are never uploaded.
 
-This contains everything you need to run your app locally.
+## Structure
 
-View your app in AI Studio: https://ai.studio/apps/a8981afc-a931-4097-906d-77d92ecbee2b
+| Path | Purpose |
+| --- | --- |
+| `/` | Public landing page |
+| `/signup`, `/login`, `/forgot-password`, `/reset-password` | Account pages |
+| `/app`, `/app/statistics`, `/app/guide`, `/app/updates`, `/app/account` | Signed-in workspace |
+| `server.ts` | Express server (Vite middleware in dev, `dist/` in production) |
+| `server/auth.ts` | `/api/auth/*` — signup, login, logout, profile, password change/reset |
+| `utils/imageOptimizer.ts` | Optimization engine (unchanged) |
 
-## Run Locally
+## Run locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js 20+ and a MongoDB database.
 
+1. `npm install`
+2. Set `MONGODB_URI` in your environment (see `.env.example` for all variables). The server does not read `.env` files itself; export the variable or run e.g. `npx tsx --env-file=.env.local server.ts`.
+3. `npm run dev` → http://localhost:3000
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Production: `npm run build && NODE_ENV=production npm start`.
+
+## Checks
+
+- `npm run typecheck`
+- `npm test` — route-guard and auth unit tests. API integration tests also run when `MONGODB_URI_TEST` points at a throwaway database (it is dropped afterwards).
+
+## Accounts
+
+- Passwords are hashed with scrypt; sessions are random tokens stored hashed in MongoDB and sent as an `httpOnly`, `SameSite=Lax` cookie (`Secure` in production).
+- No email provider is configured: password-reset links are written to the server log outside production. Configure email delivery before relying on password reset in production.

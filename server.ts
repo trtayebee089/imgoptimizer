@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import mongoose from "mongoose";
+import { createAuthRouter } from "./server/auth";
 
 // --- Schema ---
 const StatsSchema = new mongoose.Schema({
@@ -14,7 +15,7 @@ const Stats = mongoose.model('Stats', StatsSchema);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   
   app.use(express.json());
 
@@ -55,6 +56,14 @@ async function startServer() {
       }
   });
 
+  // --- Auth routes ---
+  app.use("/api/auth", createAuthRouter());
+
+  // Unknown API routes should not fall through to the SPA.
+  app.use("/api", (req, res) => {
+      res.status(404).json({ error: "Not found" });
+  });
+
   // Vite middleware
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -65,7 +74,8 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    // Express 5 requires a named wildcard; '*' crashes at startup.
+    app.get('/{*splat}', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

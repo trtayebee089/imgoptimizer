@@ -3,17 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WebP Optimizer Pro</title>
+    <title>Optimizer.pro — Image optimization workspace</title>
+    <meta name="description" content="Compress, convert, and optimize images in your browser. Fine-tune quality, target file size, dimensions, and output format. Free to use." />
+    <meta name="theme-color" content="#2965F1" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232965F1'/%3E%3Cpath d='M17.5 6 9 18h6l-1 8 9-12h-6z' fill='white'/%3E%3C/svg%3E" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        // Light theme only. 'class' mode keeps legacy dark: utilities inert.
         darkMode: 'class',
         theme: {
           extend: {
-            fontFamily: {
-              sans: ['Inter', 'ui-sans-serif', 'system-ui'],
-              display: ['Plus Jakarta Sans', 'Inter', 'system-ui'],
+            colors: {
+              brand: {
+                50: '#EEF3FE',
+                100: '#DCE6FD',
+                200: '#B9CDFB',
+                300: '#8AAAF7',
+                400: '#5584F4',
+                500: '#2965F1',
+                600: '#1F54D6',
+                700: '#1A45AD',
+                800: '#183C8C',
+                900: '#172F66',
+              },
+              canvas: '#F5F7FC',
+              ink: '#111827',
+              muted: '#5B6B86',
+              subtle: '#8090A8',
+              line: '#E3E8F2',
+              'line-strong': '#CDD5E3',
+              success: { 50: '#ECFDF3', 500: '#16A34A', 600: '#15803D', 700: '#166534' },
+              warning: { 50: '#FFF8EB', 500: '#D97706', 600: '#B45309', 700: '#92400E' },
+              danger: { 50: '#FEF2F2', 500: '#DC2626', 600: '#B91C1C', 700: '#991B1B' },
             },
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              display: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
+            },
+            boxShadow: {
+              card: '0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.04)',
+              raised: '0 4px 12px -2px rgba(17, 24, 39, 0.08), 0 2px 4px -2px rgba(17, 24, 39, 0.04)',
+              overlay: '0 20px 48px -12px rgba(17, 24, 39, 0.25)',
+            },
+            maxWidth: { page: '1200px' },
           },
         },
       }
@@ -21,36 +54,30 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 
     <style>
-      body {
-        font-family: 'Inter', sans-serif;
-        letter-spacing: normal;
-      }
-      h1, h2, h3, .font-display {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        letter-spacing: normal;
-      }
-      /* Custom scrollbar for modern feel */
-      ::-webkit-scrollbar {
-        width: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background-color: rgba(156, 163, 175, 0.3);
-        border-radius: 20px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background-color: rgba(156, 163, 175, 0.6);
+      html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+      body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+      h1, h2, h3, .font-display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; }
+      :focus-visible { outline: 2px solid #2965F1; outline-offset: 2px; }
+      ::selection { background: #B9CDFB; color: #111827; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background-color: rgba(91, 107, 134, 0.25); border-radius: 8px; }
+      ::-webkit-scrollbar-thumb:hover { background-color: rgba(91, 107, 134, 0.45); }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      details > summary { list-style: none; }
+      details > summary::-webkit-details-marker { display: none; }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
       }
     </style>
-  <link rel="stylesheet" href="/index.css">
-</head>
-  <body class="bg-slate-50 dark:bg-[#000000] text-slate-900 dark:text-white antialiased min-h-screen selection:bg-blue-500 selection:text-white transition-colors duration-300 overflow-x-hidden">
+  </head>
+  <body class="bg-canvas text-ink antialiased min-h-screen overflow-x-hidden">
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+// Not named App.tsx: Vite's dev server would resolve the /app route to that file on case-insensitive filesystems.
+import App from './AppRoot';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
