@@ -1,0 +1,5 @@
+{
+  "name": "Image Optimizer Gen 3",
+  "description": "A smart, client-side image optimizer that converts images to WebP, aiming for your desired target size through iterative compression and resizing.",
+  "requestFramePermissions": []
+}
