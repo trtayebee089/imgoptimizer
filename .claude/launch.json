@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "optimizer-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:memory"],
+      "port": 3000
+    }
+  ]
+}
