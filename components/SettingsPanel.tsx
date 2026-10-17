@@ -50,7 +50,7 @@ const NumberInput: React.FC<{
           if (e.key === 'Enter') commit();
           if (e.key === 'Escape') setTemp(value.toString());
         }}
-        className="w-full h-9 rounded-lg border border-line-strong bg-white pl-2.5 pr-9 text-right text-sm font-semibold tabular-nums text-ink focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/25 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className="w-full h-9 rounded-lg border border-line-strong bg-white pl-2.5 pr-9 text-right text-sm font-semibold tabular-nums text-ink focus:outline-none focus:border-brand-600 focus:shadow-focus [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
       <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none" aria-hidden="true">{unit}</span>
     </div>
@@ -102,7 +102,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(o.value)}
-            className={`h-8 rounded-md text-[13px] font-semibold transition-colors ${selected ? 'bg-white text-brand-600 shadow-card ring-1 ring-line' : 'text-muted hover:text-ink'}`}
+            className={`h-8 rounded-md text-[13px] font-semibold transition-colors ${selected ? 'bg-white text-brand-800 shadow-card ring-1 ring-line' : 'text-muted hover:text-ink'}`}
           >
             {o.label}
           </button>
@@ -155,7 +155,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onChange
       </Section>
 
       {settings.mode === 'basic' && (
-        <div className="mt-5 rounded-lg bg-brand-50 border border-brand-100 px-3 py-2.5 text-xs text-brand-800 flex gap-2">
+        <div className="mt-5 rounded-lg bg-brand-50 border border-brand-200 px-3 py-2.5 text-xs text-brand-900 flex gap-2">
           <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>The settings below apply to Smart mode. They are kept for when you switch back.</span>
         </div>
@@ -172,9 +172,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onChange
                 role="radio"
                 aria-checked={selected}
                 onClick={() => onChange({ ...settings, ...p.values })}
-                className={`rounded-lg border px-2 py-2.5 text-left transition-colors ${selected ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-line-strong bg-white hover:border-subtle'}`}
+                className={`rounded-lg border px-2 py-2.5 text-left transition-colors ${selected ? 'border-brand-600 bg-brand-50 ring-1 ring-brand-600' : 'border-line-strong bg-white hover:border-subtle'}`}
               >
-                <span className={`block text-[13px] font-semibold ${selected ? 'text-brand-700' : 'text-ink'}`}>{p.label}</span>
+                <span className={`block text-[13px] font-semibold ${selected ? 'text-brand-800' : 'text-ink'}`}>{p.label}</span>
                 <span className="block text-[11px] text-muted mt-0.5 tabular-nums">{p.values.targetSizeKB} KB · {p.values.minQuality}%</span>
               </button>
             );
@@ -219,17 +219,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ settings, onChange
         </div>
       </Section>
 
-      <style>{`
-        .op-range { -webkit-appearance: none; appearance: none; height: 20px; background: transparent; cursor: pointer; }
-        .op-range:focus { outline: none; }
-        .op-range::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, #2965F1 var(--pct), #E3E8F2 var(--pct)); }
-        .op-range::-moz-range-track { height: 6px; border-radius: 999px; background: #E3E8F2; }
-        .op-range::-moz-range-progress { height: 6px; border-radius: 999px; background: #2965F1; }
-        .op-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 999px; background: #fff; border: 2px solid #2965F1; box-shadow: 0 1px 3px rgba(17,24,39,.2); }
-        .op-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: #fff; border: 2px solid #2965F1; box-shadow: 0 1px 3px rgba(17,24,39,.2); }
-        .op-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(41,101,241,.3); }
-        .op-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(41,101,241,.3); }
-      `}</style>
     </div>
   );
 };

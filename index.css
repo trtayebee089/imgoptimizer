@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body { @apply bg-canvas text-ink antialiased; font-feature-settings: 'cv11', 'ss01'; }
+  h1, h2, h3 { letter-spacing: -0.02em; }
+  :focus-visible { outline: 2px solid #218838; outline-offset: 2px; }
+  ::selection { background: #B5E6BC; color: #202720; }
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: rgba(102, 112, 102, 0.25); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background-color: rgba(102, 112, 102, 0.45); }
+
+/* Range input used by the optimization settings */
+.op-range { -webkit-appearance: none; appearance: none; height: 20px; background: transparent; cursor: pointer; }
+.op-range:focus { outline: none; }
+.op-range::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, #46B556 var(--pct), #E5E9E1 var(--pct)); }
+.op-range::-moz-range-track { height: 6px; border-radius: 999px; background: #E5E9E1; }
+.op-range::-moz-range-progress { height: 6px; border-radius: 999px; background: #46B556; }
+.op-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 999px; background: #fff; border: 2px solid #218838; box-shadow: 0 1px 3px rgba(32,39,32,.2); }
+.op-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: #fff; border: 2px solid #218838; box-shadow: 0 1px 3px rgba(32,39,32,.2); }
+.op-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(97,206,112,.4); }
+.op-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(97,206,112,.4); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

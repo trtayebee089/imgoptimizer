@@ -1,6 +1,7 @@
-
 import React, { useRef } from 'react';
-import { UploadCloud } from 'lucide-react';
+import { UploadCloud, ShieldCheck } from 'lucide-react';
+import { ACCEPTED_DESCRIPTION, MAX_FILE_BYTES, MAX_FILES_PER_ADD } from '../lib/fileValidation';
+import { buttonClass } from './ui';
 
 interface DropZoneProps {
   onFilesSelect: (files: File[]) => void;
@@ -20,9 +21,9 @@ export const DropZone: React.FC<DropZoneProps> = ({ onFilesSelect, isDragging = 
   return (
     <div
       onClick={() => inputRef.current?.click()}
-      className={`w-full cursor-pointer rounded-2xl border-2 border-dashed px-6 py-14 md:py-20 flex flex-col items-center text-center transition-colors ${isDragging ? 'border-brand-500 bg-brand-50' : 'border-line-strong bg-white hover:border-brand-400 hover:bg-brand-50/40'}`}
+      className={`w-full cursor-pointer rounded-2xl border-2 border-dashed px-6 py-12 md:py-16 flex flex-col items-center text-center transition-colors ${isDragging ? 'border-brand-600 bg-brand-50' : 'border-line-strong bg-white hover:border-brand-400 hover:bg-brand-50/40'}`}
     >
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-5 transition-colors ${isDragging ? 'bg-brand-500 text-white' : 'bg-brand-50 text-brand-500'}`} aria-hidden="true">
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-5 transition-colors ${isDragging ? 'bg-brand-500 text-on-brand' : 'bg-brand-50 text-brand-700'}`} aria-hidden="true">
         <UploadCloud size={28} />
       </div>
       <h2 className="text-xl md:text-2xl font-bold text-ink tracking-tight">
@@ -34,14 +35,17 @@ export const DropZone: React.FC<DropZoneProps> = ({ onFilesSelect, isDragging = 
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
-        className="mt-6 inline-flex items-center justify-center h-11 px-6 rounded-lg bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 shadow-card transition-colors"
+        className={buttonClass('primary', 'lg', 'mt-6')}
       >
-        Choose files
+        Choose images
       </button>
-      <p className="text-xs text-muted mt-5">
-        JPG, PNG, WebP and other images your browser can open · Multiple files supported
+      <p className="text-xs text-muted mt-5 max-w-md">
+        {ACCEPTED_DESCRIPTION} · up to {Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB each · {MAX_FILES_PER_ADD} files at a time
       </p>
-      <input type="file" multiple accept="image/*" ref={inputRef} onChange={handleInputChange} className="hidden" aria-label="Choose image files" />
+      <p className="text-xs text-muted mt-2 inline-flex items-center gap-1.5">
+        <ShieldCheck size={13} className="text-brand-700" aria-hidden="true" /> Processed in your browser — files are not uploaded
+      </p>
+      <input type="file" multiple accept="image/*,.avif,.heic" ref={inputRef} onChange={handleInputChange} className="hidden" aria-label="Choose image files" />
     </div>
   );
 };

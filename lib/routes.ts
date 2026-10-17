@@ -3,37 +3,48 @@
 export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
 export type RouteId =
-  | 'landing' | 'login' | 'signup' | 'forgot-password' | 'reset-password'
+  | 'landing' | 'privacy' | 'terms'
+  | 'signin' | 'signup' | 'forgot-password' | 'reset-password'
   | 'app' | 'not-found';
 
-export type AppTab = 'workspace' | 'statistics' | 'guide' | 'updates' | 'account';
-
-export const APP_TABS: Record<string, AppTab> = {
-  '/app': 'workspace',
-  '/app/statistics': 'statistics',
-  '/app/guide': 'guide',
-  '/app/updates': 'updates',
-  '/app/account': 'account',
-};
+export type AppTab = 'overview' | 'optimizer' | 'history' | 'settings' | 'help';
 
 export const TAB_PATHS: Record<AppTab, string> = {
-  workspace: '/app',
-  statistics: '/app/statistics',
-  guide: '/app/guide',
-  updates: '/app/updates',
-  account: '/app/account',
+  overview: '/app',
+  optimizer: '/app/optimize',
+  history: '/app/history',
+  settings: '/app/settings',
+  help: '/app/help',
+};
+
+export const APP_TABS: Record<string, AppTab> = Object.fromEntries(
+  Object.entries(TAB_PATHS).map(([tab, path]) => [path, tab as AppTab]),
+);
+
+/** Old paths kept working after the redesign. */
+const LEGACY_REDIRECTS: Record<string, string> = {
+  '/login': '/signin',
+  '/app/statistics': '/app/history',
+  '/app/guide': '/app/help',
+  '/app/account': '/app/settings',
+  '/app/updates': '/app',
 };
 
 const PUBLIC_ROUTES: Record<string, RouteId> = {
   '/': 'landing',
-  '/login': 'login',
+  '/privacy': 'privacy',
+  '/terms': 'terms',
+  '/signin': 'signin',
   '/signup': 'signup',
   '/forgot-password': 'forgot-password',
   '/reset-password': 'reset-password',
 };
 
 /** Routes that a signed-in user is sent away from. */
-const GUEST_ONLY: RouteId[] = ['login', 'signup'];
+const GUEST_ONLY: RouteId[] = ['signin', 'signup'];
+
+/** Routes that should never be indexed by search engines. */
+export const NOINDEX_ROUTES: RouteId[] = ['signin', 'signup', 'forgot-password', 'reset-password', 'app', 'not-found'];
 
 export const normalizePath = (path: string) => (path.length > 1 ? path.replace(/\/+$/, '') : path) || '/';
 
@@ -48,11 +59,14 @@ export const safeNext = (next: string | null | undefined, fallback = '/app') =>
 
 export const resolveRoute = (rawPath: string, search: string, status: AuthStatus): Resolution => {
   const path = normalizePath(rawPath);
-  const tab = APP_TABS[path];
 
+  const legacy = LEGACY_REDIRECTS[path];
+  if (legacy) return { kind: 'redirect', to: legacy + search };
+
+  const tab = APP_TABS[path];
   if (tab) {
     if (status === 'loading') return { kind: 'wait' };
-    if (status === 'anonymous') return { kind: 'redirect', to: `/login?next=${encodeURIComponent(path)}` };
+    if (status === 'anonymous') return { kind: 'redirect', to: `/signin?next=${encodeURIComponent(path)}` };
     return { kind: 'render', route: 'app', tab };
   }
 

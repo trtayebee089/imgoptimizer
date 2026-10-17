@@ -1,86 +1,49 @@
-import express from "express";
-import path from "path";
-import { createServer as createViteServer } from "vite";
-import mongoose from "mongoose";
-import { createAuthRouter } from "./server/auth";
+import express from 'express';
+import path from 'path';
+import { createApp } from './server/app.js';
+import { connectDb } from './server/db.js';
 
-// --- Schema ---
-const StatsSchema = new mongoose.Schema({
-    filesProcessed: Number,
-    totalProcessedBytes: Number,
-    savedBytes: Number,
-    singleton: { type: String, default: 'singleton', unique: true }
-});
-const Stats = mongoose.model('Stats', StatsSchema);
+// Long-running Node server: local development (Vite middleware) or self-hosted
+// production (serves dist/). On Vercel, api/index.ts is used instead.
+
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
 
 async function startServer() {
-  const app = express();
+  const app = createApp();
   const PORT = Number(process.env.PORT) || 3000;
-  
-  app.use(express.json());
 
-  // Connect to DB
-  console.log('Attempting to connect to MongoDB...');
-  if (process.env.MONGODB_URI) {
-      try {
-          await mongoose.connect(process.env.MONGODB_URI);
-          console.log('Connected to MongoDB');
-      } catch (err) {
-          console.error('Failed to connect to MongoDB:', err);
-      }
-  } else {
-      console.warn('MONGODB_URI not set');
-  }
+  // Connect eagerly so configuration problems show up in the log at startup.
+  connectDb().then(() => console.log('Connected to MongoDB'), () => { /* logged by connectDb */ });
 
-  // --- API routes ---
-  app.get("/api/stats", async (req, res) => {
-      try {
-          const stats = await Stats.findOne({ singleton: 'singleton' });
-          res.json(stats || { filesProcessed: 0, totalProcessedBytes: 0, savedBytes: 0 });
-      } catch (err) {
-          res.status(500).json({ error: String(err) });
-      }
-  });
-
-  app.post("/api/stats", async (req, res) => {
-      try {
-          const { filesProcessed, totalProcessedBytes, savedBytes } = req.body;
-          const stats = await Stats.findOneAndUpdate(
-              { singleton: 'singleton' },
-              { filesProcessed, totalProcessedBytes, savedBytes },
-              { upsert: true, new: true }
-          );
-          res.json(stats);
-      } catch (err) {
-          res.status(500).json({ error: String(err) });
-      }
-  });
-
-  // --- Auth routes ---
-  app.use("/api/auth", createAuthRouter());
-
-  // Unknown API routes should not fall through to the SPA.
-  app.use("/api", (req, res) => {
-      res.status(404).json({ error: "Not found" });
-  });
-
-  // Vite middleware
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use((_req, res, next) => { res.setHeader('Content-Security-Policy', CSP); next(); });
+    app.use(express.static(distPath, { index: false }));
     // Express 5 requires a named wildcard; '*' crashes at startup.
-    app.get('/{*splat}', (req, res) => {
+    app.get('/{*splat}', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

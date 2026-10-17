@@ -1,6 +1,8 @@
 
 import React from 'react';
-import { Upload, SlidersHorizontal, Repeat, Ruler, Layers, Download, ShieldCheck, Lightbulb } from 'lucide-react';
+import { Upload, SlidersHorizontal, Repeat, Ruler, Layers, Download, ShieldCheck, Lightbulb, Gauge, LifeBuoy, AlertTriangle } from 'lucide-react';
+import { PageHeader } from '../components/ui';
+import { MAX_FILE_BYTES, MAX_PIXELS, MAX_FILES_PER_ADD, MAX_QUEUE_SIZE, ACCEPTED_DESCRIPTION } from '../lib/fileValidation';
 
 const SECTIONS = [
   { id: 'adding-images', label: 'Adding images', icon: Upload },
@@ -9,8 +11,11 @@ const SECTIONS = [
   { id: 'dimensions', label: 'Dimensions', icon: Ruler },
   { id: 'results', label: 'Results & downloads', icon: Download },
   { id: 'batch', label: 'Batch actions', icon: Layers },
+  { id: 'limits', label: 'Limits', icon: Gauge },
+  { id: 'troubleshooting', label: 'Troubleshooting', icon: AlertTriangle },
   { id: 'privacy', label: 'Privacy', icon: ShieldCheck },
   { id: 'tips', label: 'Tips', icon: Lightbulb },
+  { id: 'support', label: 'Support', icon: LifeBuoy },
 ];
 
 const Section: React.FC<{ id: string; title: string; children: React.ReactNode }> = ({ id, title, children }) => (
@@ -20,7 +25,7 @@ const Section: React.FC<{ id: string; title: string; children: React.ReactNode }
   </section>
 );
 
-export const UserGuide: React.FC = () => {
+export const HelpPage: React.FC = () => {
   const scrollTo = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -28,10 +33,7 @@ export const UserGuide: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
-      <header className="mb-6 md:mb-8">
-        <h1 className="text-2xl md:text-[28px] font-bold tracking-tight text-ink">Guide</h1>
-        <p className="text-sm text-muted mt-1.5 max-w-2xl">Everything you need to get small, sharp images out of Optimizer.pro.</p>
-      </header>
+      <PageHeader title="Help & Support" description="Everything you need to get small, sharp images out of Optimizer.pro." />
 
       <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
         <nav aria-label="Guide sections" className="lg:w-56 shrink-0">
@@ -54,7 +56,7 @@ export const UserGuide: React.FC = () => {
               <li><strong>Paste</strong> an image from your clipboard with Ctrl + V (⌘ + V on Mac).</li>
               <li><strong>Browse</strong> with the Choose files button. You can select many files at once.</li>
             </ul>
-            <p>Any image your browser can open is accepted (for example JPG, PNG, WebP, GIF or AVIF). Results are written as <strong>WebP, JPEG or PNG</strong>. Images are processed one at a time, in the order they were added, using the settings active when each one starts.</p>
+            <p>Supported inputs are {ACCEPTED_DESCRIPTION} — each file's type is checked from its contents, not just its name. HEIC and TIFF are accepted only if your browser can open them. Results are written as <strong>WebP, JPEG or PNG</strong>. Images are processed one at a time, in the order they were added, using the settings active when each one starts.</p>
           </Section>
 
           <Section id="settings" title="Settings">
@@ -98,19 +100,36 @@ export const UserGuide: React.FC = () => {
           </Section>
 
           <Section id="batch" title="Batch actions">
-            <p>Once images are in the queue, the toolbar above the list lets you:</p>
+            <p>Once images are in the queue, the toolbar above the list lets you act on every image — or, when you tick the checkboxes next to images, only on the selected ones:</p>
             <ul className="list-disc pl-5 space-y-1">
-              <li><strong>Download ZIP</strong> — every completed image in one archive.</li>
-              <li><strong>Download files</strong> — every completed image as a separate download.</li>
-              <li><strong>Rename all</strong> — give every file a common base name with a number (photo_1, photo_2…).</li>
-              <li><strong>Reprocess all</strong> — run the whole queue again with the current settings.</li>
-              <li><strong>Clear</strong> — remove everything from the queue.</li>
+              <li><strong>Download ZIP</strong> — finished images in one archive (duplicate names get a number).</li>
+              <li><strong>Download files</strong> — finished images as separate downloads.</li>
+              <li><strong>Rename</strong> — give files a common base name with a number (photo_1, photo_2…).</li>
+              <li><strong>Reprocess</strong> — run images again with the current settings.</li>
+              <li><strong>Remove</strong> / <strong>Clear</strong> — take images out of the queue.</li>
+            </ul>
+          </Section>
+
+          <Section id="limits" title="Limits">
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li>Up to <strong>{Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB</strong> and <strong>{MAX_PIXELS / 1e6} megapixels</strong> per image, so your browser doesn't run out of memory.</li>
+              <li>Up to <strong>{MAX_FILES_PER_ADD}</strong> files at a time and <strong>{MAX_QUEUE_SIZE}</strong> in the queue. Clear finished images to add more.</li>
+              <li>Results live in this browser tab. Download them before closing or reloading the page.</li>
+            </ul>
+          </Section>
+
+          <Section id="troubleshooting" title="Troubleshooting">
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li><strong>Unsupported file type</strong> — the file isn't one of the supported image formats, or it's damaged.</li>
+              <li><strong>Failed</strong> — your browser couldn't decode or encode the image. Use <em>Retry</em>, try another output format, or close other tabs to free memory. Other images in the queue are not affected.</li>
+              <li><strong>Result is larger than the original</strong> — this can happen with small or already-compressed files. The real size is shown; keep the original in that case.</li>
+              <li><strong>Session ended</strong> — sign in again from the dialog; images already in your workspace are kept.</li>
             </ul>
           </Section>
 
           <Section id="privacy" title="Privacy">
             <p>Images are decoded, resized and encoded <strong>inside your browser</strong> using the Canvas API. Image files are not uploaded to the Optimizer.pro server.</p>
-            <p>After each image is processed, the app records anonymous totals — one more file processed, its original size, and the bytes saved — which power the Statistics page. Your account stores your name, email and a securely hashed password.</p>
+            <p>After each image is processed, your account's history records only numbers: original and optimized size in bytes, input and output format, mode and whether it succeeded — never the image or its file name. You can clear your history or delete your account in Settings.</p>
           </Section>
 
           <Section id="tips" title="Tips">
@@ -119,6 +138,12 @@ export const UserGuide: React.FC = () => {
               <li>For screenshots and graphics with text, prefer a higher minimum edge so text stays readable.</li>
               <li>WebP usually gives the smallest files at a given quality. Use JPEG when you need maximum compatibility.</li>
             </ul>
+          </Section>
+
+          <Section id="support" title="Support">
+            {__SUPPORT_EMAIL__
+              ? <p>Questions or problems? Email <a className="font-semibold text-brand-800 underline" href={`mailto:${__SUPPORT_EMAIL__}`}>{__SUPPORT_EMAIL__}</a>.</p>
+              : <p>Most questions are answered above. Account questions — such as changing your password or deleting your account — are handled in <strong>Settings</strong>.</p>}
           </Section>
         </div>
       </div>

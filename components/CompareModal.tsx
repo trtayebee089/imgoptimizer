@@ -93,7 +93,7 @@ export const CompareModal: React.FC<CompareModalProps> = ({ originalUrl, compres
                     style={{ left: `${sliderPosition}%`, transform: 'translateX(-50%)' }}
                     aria-hidden="true"
                 >
-                    <div className="w-8 h-8 bg-white rounded-full shadow-raised flex items-center justify-center text-brand-600 ring-1 ring-line">
+                    <div className="w-8 h-8 bg-white rounded-full shadow-raised flex items-center justify-center text-brand-800 ring-1 ring-line">
                         <ArrowLeftRight size={14} />
                     </div>
                 </div>

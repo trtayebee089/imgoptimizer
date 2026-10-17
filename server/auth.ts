@@ -1,39 +1,27 @@
 import express, { Request, Response, NextFunction } from 'express';
-import mongoose from 'mongoose';
-import { hashPassword, verifyPassword, generateToken, hashToken } from './password';
-import { normalizeEmail, validateEmail, validateName, validatePassword } from '../lib/validation';
+import { hashPassword, verifyPassword, generateToken, hashToken } from './password.js';
+import { normalizeEmail, validateEmail, validateName, validatePassword } from '../lib/validation.js';
+import { sanitizeSettings } from '../lib/optimizationSettings.js';
+import { User, Session, PasswordReset, OptimizationRecord } from './models.js';
+import { connectDb, isDbConfigured } from './db.js';
+import { rateLimit } from './rateLimit.js';
+import { resetDeliveryMode, sendEmail, passwordResetEmail } from './email.js';
+import { apiErrorHandler } from './errors.js';
 
-// --- Schemas ---
-const UserSchema = new mongoose.Schema({
-  name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  passwordHash: { type: String, required: true },
-  // The product is free; the plan field exists so the UI can show the real plan.
-  plan: { type: String, enum: ['free'], default: 'free' },
-}, { timestamps: true });
-
-const SessionSchema = new mongoose.Schema({
-  tokenHash: { type: String, required: true, unique: true },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  expiresAt: { type: Date, required: true, expires: 0 },
-}, { timestamps: true });
-
-const PasswordResetSchema = new mongoose.Schema({
-  tokenHash: { type: String, required: true, unique: true },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  expiresAt: { type: Date, required: true, expires: 0 },
-});
-
-export const User: mongoose.Model<any> = mongoose.models.User || mongoose.model('User', UserSchema);
-export const Session: mongoose.Model<any> = mongoose.models.Session || mongoose.model('Session', SessionSchema);
-export const PasswordReset: mongoose.Model<any> = mongoose.models.PasswordReset || mongoose.model('PasswordReset', PasswordResetSchema);
+export { User, Session, PasswordReset };
 
 // --- Config ---
-export const SESSION_COOKIE = 'op_session';
 const DAY = 24 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * DAY;
 const SESSION_TTL = DAY;
-const RESET_TTL = 60 * 60 * 1000;
+const RESET_TTL_MIN = 60;
+const RESET_TTL = RESET_TTL_MIN * 60 * 1000;
+
+export const isSecureCookie = () => process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : process.env.NODE_ENV === 'production';
+
+// `__Host-` cookies must be Secure, host-only and path=/ — the browser enforces it.
+// Plain HTTP (local development) can't use the prefix.
+export const sessionCookieName = () => (isSecureCookie() ? '__Host-op_session' : 'op_session');
 
 // Used to keep login timing similar whether or not the email exists.
 let dummyHash: Promise<string> | null = null;
@@ -52,12 +40,17 @@ export const parseCookies = (header: string | undefined): Record<string, string>
   return out;
 };
 
-const publicUser = (u: any) => ({ id: String(u._id), name: u.name, email: u.email, plan: u.plan || 'free', createdAt: u.createdAt });
-
-const isSecureCookie = () => process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : process.env.NODE_ENV === 'production';
+const publicUser = (u: any) => ({
+  id: String(u._id),
+  name: u.name,
+  email: u.email,
+  plan: u.plan || 'free',
+  createdAt: u.createdAt,
+  preferences: { optimization: sanitizeSettings(u.preferences?.optimization) },
+});
 
 const setSessionCookie = (res: Response, token: string, remember: boolean) => {
-  res.cookie(SESSION_COOKIE, token, {
+  res.cookie(sessionCookieName(), token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: isSecureCookie(),
@@ -67,38 +60,22 @@ const setSessionCookie = (res: Response, token: string, remember: boolean) => {
 };
 
 const clearSessionCookie = (res: Response) => {
-  res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'lax', secure: isSecureCookie(), path: '/' });
+  res.clearCookie(sessionCookieName(), { httpOnly: true, sameSite: 'lax', secure: isSecureCookie(), path: '/' });
 };
 
-const createSession = async (res: Response, userId: unknown, remember: boolean) => {
+const readSessionToken = (req: Request) => parseCookies(req.headers.cookie)[sessionCookieName()];
+
+const createSession = async (req: Request, res: Response, userId: unknown, remember: boolean) => {
+  // Rotate: a session token that existed before sign-in is never reused (prevents fixation).
+  const previous = readSessionToken(req);
+  if (previous) await Session.deleteOne({ tokenHash: hashToken(previous) });
   const token = generateToken();
   await Session.create({ tokenHash: hashToken(token), userId, expiresAt: new Date(Date.now() + (remember ? REMEMBER_TTL : SESSION_TTL)) });
   setSessionCookie(res, token, remember);
 };
 
-/** Small in-memory fixed-window limiter (per process). */
-const createLimiter = (max: number, windowMs: number) => {
-  const hits = new Map<string, { count: number; reset: number }>();
-  return (req: Request, res: Response, next: NextFunction) => {
-    const now = Date.now();
-    const key = req.ip || 'unknown';
-    const entry = hits.get(key);
-    if (!entry || entry.reset < now) {
-      hits.set(key, { count: 1, reset: now + windowMs });
-      if (hits.size > 10000) for (const [k, v] of hits) if (v.reset < now) hits.delete(k);
-      return next();
-    }
-    entry.count++;
-    if (entry.count > max) {
-      res.setHeader('Retry-After', String(Math.ceil((entry.reset - now) / 1000)));
-      return res.status(429).json({ error: 'Too many attempts. Please wait a few minutes and try again.' });
-    }
-    next();
-  };
-};
-
 // Reject cross-site writes: require JSON bodies and a same-origin Origin header when present.
-const sameOriginJson = (req: Request, res: Response, next: NextFunction) => {
+export const sameOriginJson = (req: Request, res: Response, next: NextFunction) => {
   if (req.method === 'GET' || req.method === 'HEAD') return next();
   const origin = req.headers.origin;
   if (origin) {
@@ -112,15 +89,21 @@ const sameOriginJson = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
-const requireDb = (_req: Request, res: Response, next: NextFunction) => {
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ error: 'The account service is temporarily unavailable. Please try again later.' });
+/** Ensures MongoDB is connected; answers 503 with a clear message otherwise (never a fake success). */
+export const ensureDb = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    await connectDb();
+    next();
+  } catch {
+    const message = isDbConfigured()
+      ? 'The account service is temporarily unavailable. Please try again in a moment.'
+      : 'Accounts are not available on this deployment yet (database not configured).';
+    res.status(503).json({ error: message, code: isDbConfigured() ? 'db_unavailable' : 'db_not_configured' });
   }
-  next();
 };
 
 const loadSession = async (req: Request) => {
-  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  const token = readSessionToken(req);
   if (!token) return null;
   const session = await Session.findOne({ tokenHash: hashToken(token), expiresAt: { $gt: new Date() } });
   if (!session) return null;
@@ -129,12 +112,15 @@ const loadSession = async (req: Request) => {
   return { session, user };
 };
 
-const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
+export interface AuthContext { session: any; user: any }
+export const authOf = (req: Request) => (req as any).auth as AuthContext;
+
+export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = await loadSession(req);
     if (!auth) {
       clearSessionCookie(res);
-      return res.status(401).json({ error: 'You are not signed in.' });
+      return res.status(401).json({ error: 'Your session has ended. Please sign in again.', code: 'unauthenticated' });
     }
     (req as any).auth = auth;
     next();
@@ -145,25 +131,37 @@ const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
 
 // Express 5 forwards rejected promises to the error handler.
 type Handler = (req: Request, res: Response) => Promise<unknown>;
-const h = (fn: Handler) => (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
+export const h = (fn: Handler) => (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
+
+const emailKey = (req: Request) => normalizeEmail(req.body?.email) || null;
+
+const resetOrigin = (req: Request): string | null => {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/+$/, '');
+  // In production the Host header is attacker-controlled, so links are only built from APP_URL.
+  if (process.env.NODE_ENV === 'production') return null;
+  return `${req.protocol}://${req.headers.host}`;
+};
 
 // --- Router ---
 export interface AuthRouterOptions {
-  /** Max attempts per IP per window: login (15 min), signup (1 h), password reset (1 h). */
+  /** Max attempts per IP (and per email) per window: login (15 min), signup (1 h), password reset (1 h). */
   limits?: { login?: number; signup?: number; reset?: number };
+  /** Namespace for rate-limit counters (lets tests run routers with independent limits). */
+  limitPrefix?: string;
 }
 
-export const createAuthRouter = ({ limits = {} }: AuthRouterOptions = {}) => {
+export const createAuthRouter = ({ limits = {}, limitPrefix = 'auth' }: AuthRouterOptions = {}) => {
   const router = express.Router();
   router.use(express.json({ limit: '10kb' }));
   router.use(sameOriginJson);
-  router.use(requireDb);
   router.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+  router.use(ensureDb);
 
-  const loginLimiter = createLimiter(limits.login ?? 10, 15 * 60 * 1000);
-  const passwordChangeLimiter = createLimiter(limits.login ?? 10, 15 * 60 * 1000);
-  const signupLimiter = createLimiter(limits.signup ?? 10, 60 * 60 * 1000);
-  const resetLimiter = createLimiter(limits.reset ?? 5, 60 * 60 * 1000);
+  const L = (n: string) => `${limitPrefix}:${n}`;
+  const loginLimiter = rateLimit(L('login'), limits.login ?? 10, 15 * 60 * 1000, emailKey);
+  const sensitiveLimiter = rateLimit(L('sensitive'), limits.login ?? 10, 15 * 60 * 1000);
+  const signupLimiter = rateLimit(L('signup'), limits.signup ?? 10, 60 * 60 * 1000);
+  const resetLimiter = rateLimit(L('reset'), limits.reset ?? 5, 60 * 60 * 1000, emailKey);
 
   router.post('/signup', signupLimiter, h(async (req, res) => {
     const { name, password } = req.body || {};
@@ -171,20 +169,21 @@ export const createAuthRouter = ({ limits = {} }: AuthRouterOptions = {}) => {
     const errors: Record<string, string> = {};
     const nameErr = validateName(name); if (nameErr) errors.name = nameErr;
     const emailErr = validateEmail(email); if (emailErr) errors.email = emailErr;
-    const pwErr = validatePassword(password); if (pwErr) errors.password = pwErr;
+    const pwErr = validatePassword(password, email); if (pwErr) errors.password = pwErr;
+    if (req.body?.acceptTerms !== true) errors.acceptTerms = 'Please accept the Terms of Service and Privacy Policy.';
     if (Object.keys(errors).length) return res.status(400).json({ error: 'Please correct the highlighted fields.', fields: errors });
 
-    if (await User.exists({ email })) {
-      return res.status(409).json({ error: 'An account with this email already exists.', fields: { email: 'An account with this email already exists.' } });
-    }
+    const duplicate = { error: 'An account with this email already exists.', fields: { email: 'An account with this email already exists. Try signing in instead.' } };
+    if (await User.exists({ email })) return res.status(409).json(duplicate);
     let user;
     try {
-      user = await User.create({ name: name.trim(), email, passwordHash: await hashPassword(password) });
+      user = await User.create({ name: name.trim(), email, passwordHash: await hashPassword(password), termsAcceptedAt: new Date() });
     } catch (err: any) {
-      if (err?.code === 11000) return res.status(409).json({ error: 'An account with this email already exists.', fields: { email: 'An account with this email already exists.' } });
+      // The unique index is the real guard under concurrent signups.
+      if (err?.code === 11000) return res.status(409).json(duplicate);
       throw err;
     }
-    await createSession(res, user._id, true);
+    await createSession(req, res, user._id, true);
     res.status(201).json({ user: publicUser(user) });
   }));
 
@@ -204,12 +203,12 @@ export const createAuthRouter = ({ limits = {} }: AuthRouterOptions = {}) => {
     if (!(await verifyPassword(password, user.passwordHash))) {
       return res.status(401).json({ error: 'Incorrect email or password.' });
     }
-    await createSession(res, user._id, remember);
+    await createSession(req, res, user._id, remember);
     res.json({ user: publicUser(user) });
   }));
 
   router.post('/logout', h(async (req, res) => {
-    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+    const token = readSessionToken(req);
     if (token) {
       if (req.body?.everywhere === true) {
         const s = await Session.findOne({ tokenHash: hashToken(token) });
@@ -225,31 +224,58 @@ export const createAuthRouter = ({ limits = {} }: AuthRouterOptions = {}) => {
   // Signed-out visitors get { user: null } (not 401) so the public site doesn't log errors.
   router.get('/me', h(async (req, res) => {
     const auth = await loadSession(req);
-    if (!auth && parseCookies(req.headers.cookie)[SESSION_COOKIE]) clearSessionCookie(res);
+    if (!auth && readSessionToken(req)) clearSessionCookie(res);
     res.json({ user: auth ? publicUser(auth.user) : null });
   }));
 
   router.patch('/me', requireAuth, h(async (req, res) => {
     const nameErr = validateName(req.body?.name);
     if (nameErr) return res.status(400).json({ error: nameErr, fields: { name: nameErr } });
-    const user = (req as any).auth.user;
+    const { user } = authOf(req);
     user.name = req.body.name.trim();
     await user.save();
     res.json({ user: publicUser(user) });
   }));
 
-  router.post('/change-password', requireAuth, passwordChangeLimiter, h(async (req, res) => {
+  // Default optimizer settings. `null` resets to the built-in defaults.
+  router.put('/preferences', requireAuth, h(async (req, res) => {
+    const raw = req.body?.optimization;
+    const optimization = raw === null ? null : sanitizeSettings(raw);
+    if (raw !== null && !optimization) return res.status(400).json({ error: 'These optimization settings are not valid.' });
+    const { user } = authOf(req);
+    user.set('preferences.optimization', optimization);
+    await user.save();
+    res.json({ user: publicUser(user) });
+  }));
+
+  router.post('/change-password', requireAuth, sensitiveLimiter, h(async (req, res) => {
     const { currentPassword, newPassword } = req.body || {};
-    const { user, session } = (req as any).auth;
+    const { user, session } = authOf(req);
     if (typeof currentPassword !== 'string' || !(await verifyPassword(currentPassword, user.passwordHash))) {
       return res.status(400).json({ error: 'Your current password is incorrect.', fields: { currentPassword: 'Your current password is incorrect.' } });
     }
-    const pwErr = validatePassword(newPassword);
+    const pwErr = validatePassword(newPassword, user.email);
     if (pwErr) return res.status(400).json({ error: pwErr, fields: { newPassword: pwErr } });
     user.passwordHash = await hashPassword(newPassword);
     await user.save();
-    // Keep this session, sign out all others.
+    // Keep this session, sign out all others, and void outstanding reset links.
     await Session.deleteMany({ userId: user._id, _id: { $ne: session._id } });
+    await PasswordReset.deleteMany({ userId: user._id });
+    res.status(204).end();
+  }));
+
+  // Permanently deletes the account and everything tied to it.
+  router.delete('/me', requireAuth, sensitiveLimiter, h(async (req, res) => {
+    const { user } = authOf(req);
+    const password = req.body?.password;
+    if (typeof password !== 'string' || !(await verifyPassword(password, user.passwordHash))) {
+      return res.status(400).json({ error: 'Your password is incorrect.', fields: { password: 'Your password is incorrect.' } });
+    }
+    await OptimizationRecord.deleteMany({ userId: user._id });
+    await PasswordReset.deleteMany({ userId: user._id });
+    await Session.deleteMany({ userId: user._id });
+    await User.deleteOne({ _id: user._id });
+    clearSessionCookie(res);
     res.status(204).end();
   }));
 
@@ -258,47 +284,56 @@ export const createAuthRouter = ({ limits = {} }: AuthRouterOptions = {}) => {
     const emailErr = validateEmail(email);
     if (emailErr) return res.status(400).json({ error: emailErr, fields: { email: emailErr } });
 
-    // No email provider is configured in this project. Reset links are only
-    // written to the server log outside production (or when explicitly enabled).
-    const logLinks = process.env.NODE_ENV !== 'production' || process.env.AUTH_LOG_RESET_LINKS === 'true';
-    const user = await User.findOne({ email });
-    if (user) {
-      const token = generateToken();
-      await PasswordReset.deleteMany({ userId: user._id });
-      await PasswordReset.create({ tokenHash: hashToken(token), userId: user._id, expiresAt: new Date(Date.now() + RESET_TTL) });
-      const origin = process.env.APP_URL || `${req.protocol}://${req.headers.host}`;
-      const link = `${origin}/reset-password?token=${token}`;
-      if (logLinks) {
-        console.log(`[auth] Password reset link for ${email}: ${link}`);
-      } else {
-        console.warn('[auth] Password reset requested, but no email delivery is configured.');
+    const delivery = resetDeliveryMode();
+    const origin = resetOrigin(req);
+    const canDeliver = delivery !== 'unavailable' && origin !== null;
+    if (!canDeliver) {
+      console.warn(`[auth] Password reset requested but cannot be delivered (${delivery === 'unavailable' ? 'email provider not configured' : 'APP_URL not set'}).`);
+    } else {
+      const user = await User.findOne({ email });
+      if (user) {
+        const token = generateToken();
+        await PasswordReset.deleteMany({ userId: user._id });
+        await PasswordReset.create({ tokenHash: hashToken(token), userId: user._id, expiresAt: new Date(Date.now() + RESET_TTL) });
+        const link = `${origin}/reset-password?token=${token}`;
+        if (delivery === 'email') {
+          try {
+            await sendEmail(passwordResetEmail(user.email, user.name, link, RESET_TTL_MIN));
+          } catch (err: any) {
+            // Logged for operators; the response stays generic so it can't reveal that the account exists.
+            console.error('[auth] Failed to send password reset email:', err?.message || err);
+          }
+        } else {
+          console.log(`[auth] Password reset link for ${email}: ${link}`);
+        }
       }
     }
-    // Same response whether or not the account exists. `delivery` tells the UI
-    // honestly how (or whether) the link can reach the user.
-    res.json({ ok: true, delivery: logLinks ? 'server-log' : 'unavailable' });
+    // Same response whether or not the account exists. `delivery` reflects only server configuration.
+    res.json({ ok: true, delivery: canDeliver ? delivery : 'unavailable' });
   }));
 
   router.post('/reset-password', resetLimiter, h(async (req, res) => {
     const { token, password } = req.body || {};
-    if (typeof token !== 'string' || !token) return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
+    if (typeof token !== 'string' || !token || token.length > 200) return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
     const pwErr = validatePassword(password);
     if (pwErr) return res.status(400).json({ error: pwErr, fields: { password: pwErr } });
     const reset = await PasswordReset.findOneAndDelete({ tokenHash: hashToken(token), expiresAt: { $gt: new Date() } });
     if (!reset) return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
     const user = await User.findById(reset.userId);
     if (!user) return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
+    const emailErr = validatePassword(password, user.email);
+    if (emailErr) {
+      // Token was consumed by findOneAndDelete; put it back so the user can retry with a different password.
+      await PasswordReset.create({ tokenHash: reset.tokenHash, userId: reset.userId, expiresAt: reset.expiresAt });
+      return res.status(400).json({ error: emailErr, fields: { password: emailErr } });
+    }
     user.passwordHash = await hashPassword(password);
     await user.save();
     await Session.deleteMany({ userId: user._id });
+    await PasswordReset.deleteMany({ userId: user._id });
     res.status(204).end();
   }));
 
-  router.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Malformed JSON body.' });
-    console.error('[auth] Unexpected error:', err);
-    res.status(500).json({ error: 'Something went wrong. Please try again.' });
-  });
-
+  router.use(apiErrorHandler);
   return router;
 };

@@ -33,7 +33,8 @@ export interface OptimizationResult {
   };
 }
 
-export type QueueStatus = 'pending' | 'processing' | 'completed' | 'error' | 'needs_confirmation';
+// 'validating' and 'invalid' are set before an item reaches the optimizer.
+export type QueueStatus = 'validating' | 'invalid' | 'pending' | 'processing' | 'completed' | 'error' | 'needs_confirmation';
 
 export interface QueueItem {
   id: string;
@@ -43,6 +44,10 @@ export interface QueueItem {
   result?: OptimizationResult;
   error?: string;
   previewUrl: string;
+  /** Detected from the file's bytes during validation. */
+  format?: string;
+  width?: number;
+  height?: number;
 }
 
 export type OutputFormat = 'webp' | 'jpeg' | 'png';
